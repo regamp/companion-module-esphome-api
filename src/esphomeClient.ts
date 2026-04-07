@@ -1,11 +1,13 @@
 import { EventEmitter } from 'events'
-import { EsphomeSocket } from './connection/esphomeSocket'
 import { Entities, EntityType } from './entities'
-import { ListEntitiesDoneResponse, ListEntitiesRequest, SubscribeStatesRequest } from './proto/api'
+import { EspHomeClient } from 'esphome-client'
+import { E2ESocketAdapter } from './connection/e2eSocketAdapter'
 
 export class EsphomeClient extends EventEmitter {
-	private socket: EsphomeSocket | null = null
+	private adapter: E2ESocketAdapter | null = null
+	private client: InstanceType<typeof EspHomeClient> | null = null
 	private entities: { [id: string]: EntityType } = {}
+
 	constructor() {
 		super()
 	}
@@ -17,31 +19,66 @@ export class EsphomeClient extends EventEmitter {
 		}
 	}
 
-	connect(host: string, port?: number, password?: string) {
+	connect(host: string, port?: number, password?: string, encryptionKey?: string) {
 		this.disconnect()
 
-		const socket = new EsphomeSocket(host, port, password)
-		socket.on('connect', () => {
-			this.removeAllEntities()
-			this.socket?.writeRequest(ListEntitiesRequest, {})
-			this.emit('connected')
-		})
+		// Create the esphome-client library instance
+		const clientConfig: any = {
+			host,
+			port: port || 6053,
+		}
 
+		if (encryptionKey) {
+			clientConfig.psk = encryptionKey
+		}
+
+		this.client = new EspHomeClient(clientConfig)
+
+		// Create adapter to bridge between esphome-client and entity architecture
+		this.adapter = new E2ESocketAdapter(this.client)
+
+		// Subscribe all entity types
+		const adapter = this.adapter as any
 		Object.values(Entities).forEach((entity) => {
-			entity.subscribe(socket, (e) => this.addEntity(e))
+			entity.subscribe(adapter, (e) => this.addEntity(e))
 		})
 
-		socket.addMessageListener(ListEntitiesDoneResponse, () => {
-			this.socket?.writeRequest(SubscribeStatesRequest, {})
-			this.emit('refreshEntities')
+		// Handle lifecycle events
+		this.adapter.on('listEntitiesDone', () => {
+			if (this.adapter) {
+				// Trigger SubscribeStatesRequest through adapter
+				const SubscribeStatesRequest = require('./proto/api').SubscribeStatesRequest
+				this.adapter.writeRequest(SubscribeStatesRequest, {})
+				this.emit('refreshEntities')
+			}
 		})
-		socket.on('end', () => {
+
+		this.client.on('connect', () => {
+			this.removeAllEntities()
+			// Trigger ListEntitiesRequest through adapter
+			if (this.adapter) {
+				this.adapter.emitListEntitiesStart()
+			}
+		})
+
+		;(this.client as any).on('disconnect', () => {
 			this.emit('disconnected')
 		})
-		socket.on('error', (e) => {
-			this.emit('error', e)
+
+		;(this.client as any).on('error', (error: any) => {
+			this.emit('error', error)
 		})
-		this.socket = socket
+
+		this.adapter.on('error', (error: any) => {
+			this.emit('error', error)
+		})
+
+		this.adapter.on('warn', (message: any) => {
+			this.emit('warn', message)
+		})
+
+		this.client.connect()
+		this.emit('connected')
 	}
 
 	private addEntity(instance: EntityType) {
@@ -59,9 +96,13 @@ export class EsphomeClient extends EventEmitter {
 	}
 
 	disconnect() {
-		if (this.socket) {
-			this.socket.destroy()
-			this.socket = null
+		if (this.client) {
+			this.client.disconnect()
+			this.client = null
+		}
+		if (this.adapter) {
+			this.adapter.destroy()
+			this.adapter = null
 		}
 		this.removeAllEntities()
 	}

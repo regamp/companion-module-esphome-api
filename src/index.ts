@@ -48,7 +48,7 @@ class ESPHomeInstance extends InstanceBase<DeviceConfig> {
 
 	private initClient(config: DeviceConfig) {
 		if (config.host) {
-			this.client.connect(config.host, config.port, config.password)
+			this.client.connect(config.host, config.port, config.password, config.encryptionKey)
 		} else {
 			this.client.disconnect()
 		}
@@ -65,7 +65,8 @@ class ESPHomeInstance extends InstanceBase<DeviceConfig> {
 		if (!this.config
 			|| this.config.host != config.host
 			|| this.config.port != config.port
-			|| this.config.password != config.password) {
+			|| this.config.password != config.password
+			|| this.config.encryptionKey != config.encryptionKey) {
 			resetConnection = true
 		}
 

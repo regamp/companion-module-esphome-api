@@ -1,6 +1,6 @@
 {
 	"name": "esphome-api",
-	"version": "2.0.0",
+	"version": "4.0.0",
 	"description": "ESPHome client module for Companion",
 	"keywords": [
 		"esphome"
@@ -38,7 +38,8 @@
 	"dependencies": {
 		"@companion-module/base": "~1.0",
 		"@protobuf-ts/runtime": "^2.4.0",
-		"@protobuf-ts/runtime-rpc": "^2.4.0"
+		"@protobuf-ts/runtime-rpc": "^2.4.0",
+		"esphome-client": "^1.3.1"
 	},
 	"devDependencies": {
 		"@companion-module/tools": "^1.5.2",
